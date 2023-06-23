@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+import sys
+
+SYSTEMD_FIELDS = ["ActiveState", "MemoryCurrent", "TasksCurrent", "IOReadBytes", "IOWriteBytes", "IPIngressBytes", "IPEgressBytes"]
+
+def check_service(name, unit, state):
+    lines = subprocess.check_output(["systemctl","show","--no-pager",unit], universal_newlines=True).split('\n')
+    result = [line.split("=") for line in lines]
+    data = dict()
+    for line in result:
+        if len(line) > 1 and line[0] in SYSTEMD_FIELDS:
+            data[line[0]] = line[1]
+    
+ #   for item in ["MemoryCurrent", "TasksCurrent", "IOReadBytes", "IOWriteBytes", "Result", "ActiveState", "CPUUsageNSec", "IPIngressBytes", "IPEgressBytes"]:
+ #       print("%s    = %s" % (item, data[item]))
+
+    status = 3
+    status_str = "UNKNOWN"
+
+    if data["ActiveState"] == 'active':
+        status = 0
+        status_str = "OK"
+    else:
+        status = state
+        if status == 1:
+            status_str = "WARNING"
+        elif status == 2:
+            status_str = "CRITICAL"
+        else:
+            status_str = "UNKNOWN"
+
+    for item in data:
+        if data[item].startswith("["):
+            data[item] = "-1"
+
+    print("%s %s|memory=%sB tasks=%s io_read=%sB io_write=%sB ip_ingress=%sB ip_egress=%sB" 
+            % (name, status_str, data["MemoryCurrent"], data["TasksCurrent"], data["IOReadBytes"], data["IOWriteBytes"], data["IPIngressBytes"], data["IPEgressBytes"]))
+
+    sys.exit(status)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-n", "--name", help="Service name", required=True)
+    parser.add_argument("-u", "--unit", help="Systemd Service Unit", required=True)
+    parser.add_argument("-w", "--warning", help="Warning threshold. Single value or range, e.g. '20:50'.")
+    parser.add_argument("-c", "--critical", help="Critical threshold. Single value or range, e.g. '25:45'.")
+    parser.add_argument("-s", "--state", help="State when not active, e.g. 1 (Warning)", default=2, type=int)
+
+    args = parser.parse_args()
+
+    check_service(args.name, args.unit, args.state)
+
